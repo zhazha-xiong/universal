@@ -17,13 +17,7 @@ func NewRouter(service *Service) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
-	router.POST("/mcp", func(ctx *gin.Context) {
-		handleMCP(ctx, service)
-	})
-	router.GET("/mcp", func(ctx *gin.Context) {
-		ctx.Status(http.StatusMethodNotAllowed)
-	})
-
+	RegisterRoutes(router, service)
 	return router
 }
 

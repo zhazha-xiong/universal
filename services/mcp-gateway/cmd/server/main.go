@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/admin"
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/config"
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/runtime"
+	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/server"
 )
 
 func main() {
@@ -20,7 +22,8 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	if err := http.ListenAndServe(cfg.Server.Addr, runtime.NewRouter(runtime.NewService(nil, nil))); err != nil {
+	router := server.NewRouter(admin.NewService(), runtime.NewService(nil, nil))
+	if err := http.ListenAndServe(cfg.Server.Addr, router); err != nil {
 		log.Fatalf("start server: %v", err)
 	}
 }

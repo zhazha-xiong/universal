@@ -7,8 +7,11 @@ import (
 
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/admin"
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/config"
+	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/repository"
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/runtime"
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/server"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -22,7 +25,17 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	router := server.NewRouter(admin.NewService(), runtime.NewService(nil, nil))
+	db, err := gorm.Open(mysql.Open(cfg.MySQL.DSN), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("open mysql: %v", err)
+	}
+
+	repo := repository.NewRepository(db)
+	if err := repo.AutoMigrate(); err != nil {
+		log.Fatalf("migrate mysql: %v", err)
+	}
+
+	router := server.NewRouter(admin.NewServiceWithStore(repo), runtime.NewService(nil, nil))
 	if err := http.ListenAndServe(cfg.Server.Addr, router); err != nil {
 		log.Fatalf("start server: %v", err)
 	}

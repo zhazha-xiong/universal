@@ -1,20 +1,6 @@
 package admin
 
-import (
-	"encoding/json"
-	"fmt"
-	"slices"
-	"strings"
-	"sync"
-	"time"
-)
-
-// Service 管理管理侧 service 和 tool 的内存数据。
-type Service struct {
-	mu       sync.RWMutex
-	services map[string]ServiceItem
-	tools    map[string]map[string]ToolItem
-}
+import "time"
 
 // ServicePayload 描述 service 的写入参数。
 type ServicePayload struct {
@@ -92,229 +78,42 @@ type ToolQuery struct {
 	PageSize int
 }
 
-// NewService 创建管理侧内存服务。
+// Service 编排管理侧 service 和 tool 的业务逻辑。
+type Service struct {
+	store Store
+}
+
+// NewService 创建管理侧服务。
 func NewService() *Service {
-	return &Service{
-		services: map[string]ServiceItem{},
-		tools:    map[string]map[string]ToolItem{},
-	}
+	return NewServiceWithStore(NewMemoryStore())
+}
+
+// NewServiceWithStore 使用指定存储创建管理侧服务。
+func NewServiceWithStore(store Store) *Service {
+	return &Service{store: store}
 }
 
 // UpsertService 创建或更新 service。
 func (service *Service) UpsertService(serviceID string, payload ServicePayload) (ServiceItem, error) {
-	if serviceID == "" || payload.Name == "" || payload.BaseURL == "" {
-		return ServiceItem{}, fmt.Errorf("service_id、name、base_url 不能为空")
-	}
-	if strings.Contains(payload.Name, "/") {
-		return ServiceItem{}, fmt.Errorf("service name 不能包含 /")
-	}
-
-	service.mu.Lock()
-	defer service.mu.Unlock()
-
-	for id, item := range service.services {
-		if id != serviceID && item.Name == payload.Name {
-			return ServiceItem{}, fmt.Errorf("service name 已存在")
-		}
-	}
-
-	now := time.Now()
-	current, ok := service.services[serviceID]
-	if !ok {
-		current.CreatedAt = now
-	}
-	current.ServiceID = serviceID
-	current.Name = payload.Name
-	current.Description = payload.Description
-	current.BaseURL = payload.BaseURL
-	current.Status = normalizeStatus(payload.Status)
-	current.Tags = slices.Clone(payload.Tags)
-	current.OwnerID = payload.OwnerID
-	current.Ext = cloneMap(payload.Ext)
-	current.UpdatedAt = now
-	if current.CreatedAt.IsZero() {
-		current.CreatedAt = now
-	}
-
-	service.services[serviceID] = current
-	return current, nil
+	return service.store.UpsertService(serviceID, payload)
 }
 
 // GetService 查询单个 service。
 func (service *Service) GetService(serviceID string) (ServiceItem, bool) {
-	service.mu.RLock()
-	defer service.mu.RUnlock()
-
-	item, ok := service.services[serviceID]
-	return item, ok
+	return service.store.GetService(serviceID)
 }
 
 // SearchServices 搜索 service 列表。
 func (service *Service) SearchServices(query ServiceQuery) ([]ServiceItem, int) {
-	service.mu.RLock()
-	defer service.mu.RUnlock()
-
-	var items []ServiceItem
-	for _, item := range service.services {
-		if query.ServiceID != "" && item.ServiceID != query.ServiceID {
-			continue
-		}
-		if query.Status != "" && item.Status != query.Status {
-			continue
-		}
-		if query.OwnerID != "" && item.OwnerID != query.OwnerID {
-			continue
-		}
-		if query.Tag != "" && !contains(item.Tags, query.Tag) {
-			continue
-		}
-		if query.Keyword != "" && !strings.Contains(item.Name, query.Keyword) && !strings.Contains(item.Description, query.Keyword) {
-			continue
-		}
-		items = append(items, item)
-	}
-
-	slices.SortFunc(items, func(left, right ServiceItem) int {
-		return strings.Compare(left.ServiceID, right.ServiceID)
-	})
-	return paginate(items, query.Page, query.PageSize), len(items)
+	return service.store.SearchServices(query)
 }
 
 // UpsertTool 创建或更新指定 service 下的 tool。
 func (service *Service) UpsertTool(serviceID string, toolID string, payload ToolPayload) (ToolItem, error) {
-	if serviceID == "" || toolID == "" || payload.Name == "" || payload.Path == "" {
-		return ToolItem{}, fmt.Errorf("service_id、tool_id、name、path 不能为空")
-	}
-	if strings.Contains(payload.Name, "/") {
-		return ToolItem{}, fmt.Errorf("tool name 不能包含 /")
-	}
-
-	service.mu.Lock()
-	defer service.mu.Unlock()
-
-	if _, ok := service.services[serviceID]; !ok {
-		return ToolItem{}, fmt.Errorf("service not found")
-	}
-
-	if _, ok := service.tools[serviceID]; !ok {
-		service.tools[serviceID] = map[string]ToolItem{}
-	}
-	for id, item := range service.tools[serviceID] {
-		if id != toolID && item.Name == payload.Name {
-			return ToolItem{}, fmt.Errorf("tool name 已存在")
-		}
-		if id != toolID && item.Path == payload.Path {
-			return ToolItem{}, fmt.Errorf("tool path 已存在")
-		}
-	}
-
-	now := time.Now()
-	current, ok := service.tools[serviceID][toolID]
-	if !ok {
-		current.CreatedAt = now
-	}
-	current.ToolID = toolID
-	current.ServiceID = serviceID
-	current.Name = payload.Name
-	current.Description = payload.Description
-	current.Path = payload.Path
-	current.Method = normalizeMethod(payload.Method)
-	current.InputSchema = cloneMap(payload.InputSchema)
-	current.OutputSchema = cloneMap(payload.OutputSchema)
-	current.Status = normalizeStatus(payload.Status)
-	current.Tags = slices.Clone(payload.Tags)
-	current.Ext = cloneMap(payload.Ext)
-	current.UpdatedAt = now
-	if current.CreatedAt.IsZero() {
-		current.CreatedAt = now
-	}
-
-	service.tools[serviceID][toolID] = current
-	return current, nil
+	return service.store.UpsertTool(serviceID, toolID, payload)
 }
 
 // ListTools 查询指定 service 下的 tool 列表。
 func (service *Service) ListTools(serviceID string, query ToolQuery) ([]ToolItem, int) {
-	service.mu.RLock()
-	defer service.mu.RUnlock()
-
-	toolsByService := service.tools[serviceID]
-	var items []ToolItem
-	for _, item := range toolsByService {
-		if query.ToolID != "" && item.ToolID != query.ToolID {
-			continue
-		}
-		if query.Status != "" && item.Status != query.Status {
-			continue
-		}
-		if query.Tag != "" && !contains(item.Tags, query.Tag) {
-			continue
-		}
-		if query.Keyword != "" && !strings.Contains(item.Name, query.Keyword) && !strings.Contains(item.Description, query.Keyword) {
-			continue
-		}
-		items = append(items, item)
-	}
-
-	slices.SortFunc(items, func(left, right ToolItem) int {
-		return strings.Compare(left.ToolID, right.ToolID)
-	})
-	return paginate(items, query.Page, query.PageSize), len(items)
-}
-
-func normalizeStatus(status string) string {
-	if status == "" {
-		return "active"
-	}
-	return status
-}
-
-func normalizeMethod(method string) string {
-	if method == "" {
-		return "POST"
-	}
-	return strings.ToUpper(method)
-}
-
-func contains(items []string, target string) bool {
-	for _, item := range items {
-		if item == target {
-			return true
-		}
-	}
-	return false
-}
-
-func cloneMap(input map[string]any) map[string]any {
-	if input == nil {
-		return nil
-	}
-	content, err := json.Marshal(input)
-	if err != nil {
-		return nil
-	}
-	var output map[string]any
-	if err := json.Unmarshal(content, &output); err != nil {
-		return nil
-	}
-	return output
-}
-
-func paginate[T any](items []T, page int, pageSize int) []T {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-
-	start := (page - 1) * pageSize
-	if start >= len(items) {
-		return []T{}
-	}
-	end := start + pageSize
-	if end > len(items) {
-		end = len(items)
-	}
-	return items[start:end]
+	return service.store.ListTools(serviceID, query)
 }

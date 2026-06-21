@@ -20,7 +20,7 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	if err := http.ListenAndServe(cfg.Server.Addr, runtime.NewRouter()); err != nil {
+	if err := http.ListenAndServe(cfg.Server.Addr, runtime.NewRouter(runtime.NewService(nil, nil))); err != nil {
 		log.Fatalf("start server: %v", err)
 	}
 }

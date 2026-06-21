@@ -1,0 +1,5 @@
+server:
+  addr: "${MCP_GATEWAY_ADDR}"
+
+mysql:
+  dsn: "${MYSQL_DSN}"

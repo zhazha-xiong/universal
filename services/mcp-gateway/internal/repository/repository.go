@@ -61,11 +61,6 @@ func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// AutoMigrate 自动迁移当前 repository 使用的表结构。
-func (repository *Repository) AutoMigrate() error {
-	return repository.db.AutoMigrate(&serviceRecord{}, &toolRecord{})
-}
-
 // UpsertService 创建或更新 service。
 func (repository *Repository) UpsertService(serviceID string, payload admin.ServicePayload) (admin.ServiceItem, error) {
 	if serviceID == "" || payload.Name == "" || payload.BaseURL == "" {

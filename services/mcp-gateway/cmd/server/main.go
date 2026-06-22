@@ -35,7 +35,7 @@ func main() {
 		log.Fatalf("migrate mysql: %v", err)
 	}
 
-	router := server.NewRouter(admin.NewServiceWithStore(repo), runtime.NewService(nil, nil))
+	router := server.NewRouter(admin.NewServiceWithStore(repo), runtime.NewService(repo, nil))
 	if err := http.ListenAndServe(cfg.Server.Addr, router); err != nil {
 		log.Fatalf("start server: %v", err)
 	}

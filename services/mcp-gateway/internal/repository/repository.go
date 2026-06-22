@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/admin"
+	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/runtime"
 )
 
 // Repository 提供基于 GORM 的管理侧数据访问能力。
@@ -262,6 +263,47 @@ func (repository *Repository) ListTools(serviceID string, query admin.ToolQuery)
 	return items, int(total)
 }
 
+// ListRuntimeTools 返回当前可暴露给 MCP 运行时的工具列表。
+func (repository *Repository) ListRuntimeTools() []runtime.Tool {
+	rows := make([]runtimeToolRow, 0)
+	if err := repository.runtimeToolQuery().Order("mcp_service.name ASC, mcp_tool.name ASC").Find(&rows).Error; err != nil {
+		return []runtime.Tool{}
+	}
+
+	tools := make([]runtime.Tool, 0, len(rows))
+	for _, row := range rows {
+		tools = append(tools, row.toRuntimeTool())
+	}
+	return tools
+}
+
+// FindRuntimeTool 按运行时暴露名查询可调用工具。
+func (repository *Repository) FindRuntimeTool(name string) (runtime.Tool, bool) {
+	parts := strings.Split(name, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return runtime.Tool{}, false
+	}
+
+	var row runtimeToolRow
+	err := repository.runtimeToolQuery().
+		Where("mcp_service.name = ? AND mcp_tool.name = ?", parts[0], parts[1]).
+		Take(&row).Error
+	if err != nil {
+		return runtime.Tool{}, false
+	}
+	return row.toRuntimeTool(), true
+}
+
+type runtimeToolRow struct {
+	ServiceName string `gorm:"column:service_name"`
+	BaseURL     string `gorm:"column:base_url"`
+	ToolName    string `gorm:"column:tool_name"`
+	Description string `gorm:"column:description"`
+	Path        string `gorm:"column:path"`
+	Method      string `gorm:"column:method"`
+	InputSchema string `gorm:"column:input_schema"`
+}
+
 func normalizeStatus(status string) string {
 	if status == "" {
 		return "active"
@@ -351,6 +393,38 @@ func mapToolRecord(record toolRecord) admin.ToolItem {
 		CreatedAt:    record.CreatedAt,
 		UpdatedAt:    record.UpdatedAt,
 	}
+}
+
+func (repository *Repository) runtimeToolQuery() *gorm.DB {
+	return repository.db.Table("mcp_tool").
+		Select([]string{
+			"mcp_service.name AS service_name",
+			"mcp_service.base_url AS base_url",
+			"mcp_tool.name AS tool_name",
+			"mcp_tool.description AS description",
+			"mcp_tool.path AS path",
+			"mcp_tool.method AS method",
+			"mcp_tool.input_schema AS input_schema",
+		}).
+		Joins("JOIN mcp_service ON mcp_service.service_id = mcp_tool.service_id").
+		Where("mcp_service.status = ? AND mcp_tool.status = ?", "active", "active")
+}
+
+func (row runtimeToolRow) toRuntimeTool() runtime.Tool {
+	return runtime.Tool{
+		Name:        row.ServiceName + "/" + row.ToolName,
+		Description: row.Description,
+		InputSchema: decodeMap(row.InputSchema),
+		Method:      row.Method,
+		URL:         joinURL(row.BaseURL, row.Path),
+	}
+}
+
+func joinURL(baseURL string, path string) string {
+	if baseURL == "" {
+		return path
+	}
+	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(path, "/")
 }
 
 func max(value int, fallback int) int {

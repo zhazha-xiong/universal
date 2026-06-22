@@ -128,8 +128,8 @@ type Tool struct {
 }
 
 type catalog interface {
-	ListTools() []Tool
-	FindTool(name string) (Tool, bool)
+	ListRuntimeTools() []Tool
+	FindRuntimeTool(name string) (Tool, bool)
 }
 
 // Service 负责 MCP 运行时工具查询与调用。
@@ -154,7 +154,7 @@ func (service *Service) ListTools() []Tool {
 	if service == nil || service.catalog == nil {
 		return []Tool{}
 	}
-	return service.catalog.ListTools()
+	return service.catalog.ListRuntimeTools()
 }
 
 // CallTool 调用指定工具并返回上游 JSON 结果。
@@ -163,7 +163,7 @@ func (service *Service) CallTool(name string, arguments map[string]any) (string,
 		return "", fmt.Errorf("tool not found")
 	}
 
-	tool, ok := service.catalog.FindTool(name)
+	tool, ok := service.catalog.FindRuntimeTool(name)
 	if !ok {
 		return "", fmt.Errorf("tool not found")
 	}

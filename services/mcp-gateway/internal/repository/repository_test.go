@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/admin"
+	"github.com/zhazha-xiong/universal/services/mcp-gateway/internal/runtime"
 )
 
 func TestRepositoryUpsertsAndGetsService(t *testing.T) {
@@ -102,6 +103,100 @@ func TestRepositoryUpsertsAndListsTools(t *testing.T) {
 		t.Fatalf("items = %+v", items)
 	}
 }
+
+func TestRepositoryListsRuntimeTools(t *testing.T) {
+	repository := newTestRepository(t)
+	_, _ = repository.UpsertService("search-service", admin.ServicePayload{
+		Name:        "search",
+		Description: "搜索服务",
+		BaseURL:     "https://search.example.com/api",
+		Status:      "active",
+	})
+	_, _ = repository.UpsertTool("search-service", "search-web-search", admin.ToolPayload{
+		Name:        "web_search",
+		Description: "搜索网页",
+		Path:        "/tools/web-search",
+		Method:      "POST",
+		Status:      "active",
+		InputSchema: map[string]any{
+			"type": "object",
+		},
+	})
+
+	tools := repository.ListRuntimeTools()
+	if len(tools) != 1 {
+		t.Fatalf("len(tools) = %d, want %d", len(tools), 1)
+	}
+	if tools[0].Name != "search/web_search" {
+		t.Fatalf("name = %q, want %q", tools[0].Name, "search/web_search")
+	}
+	if tools[0].URL != "https://search.example.com/api/tools/web-search" {
+		t.Fatalf("url = %q", tools[0].URL)
+	}
+}
+
+func TestRepositoryFindsRuntimeToolOnlyWhenActive(t *testing.T) {
+	repository := newTestRepository(t)
+	_, _ = repository.UpsertService("search-service", admin.ServicePayload{
+		Name:        "search",
+		Description: "搜索服务",
+		BaseURL:     "https://search.example.com",
+		Status:      "inactive",
+	})
+	_, _ = repository.UpsertTool("search-service", "search-web-search", admin.ToolPayload{
+		Name:        "web_search",
+		Description: "搜索网页",
+		Path:        "/tools/web-search",
+		Method:      "POST",
+		Status:      "active",
+	})
+	_, _ = repository.UpsertService("ticket-service", admin.ServicePayload{
+		Name:        "ticket",
+		Description: "工单服务",
+		BaseURL:     "https://ticket.example.com",
+		Status:      "active",
+	})
+	_, _ = repository.UpsertTool("ticket-service", "ticket-query", admin.ToolPayload{
+		Name:        "query",
+		Description: "查询工单",
+		Path:        "/query",
+		Method:      "POST",
+		Status:      "inactive",
+	})
+	_, _ = repository.UpsertService("knowledge-service", admin.ServicePayload{
+		Name:        "knowledge",
+		Description: "知识库服务",
+		BaseURL:     "https://knowledge.example.com/api",
+		Status:      "active",
+	})
+	_, _ = repository.UpsertTool("knowledge-service", "knowledge-recall", admin.ToolPayload{
+		Name:        "recall",
+		Description: "召回知识",
+		Path:        "/recall",
+		Method:      "POST",
+		Status:      "active",
+	})
+
+	if _, ok := repository.FindRuntimeTool("search/web_search"); ok {
+		t.Fatal("inactive service tool = found, want not found")
+	}
+	if _, ok := repository.FindRuntimeTool("ticket/query"); ok {
+		t.Fatal("inactive tool = found, want not found")
+	}
+
+	got, ok := repository.FindRuntimeTool("knowledge/recall")
+	if !ok {
+		t.Fatal("active tool = not found, want found")
+	}
+	if got.URL != "https://knowledge.example.com/api/recall" {
+		t.Fatalf("url = %q", got.URL)
+	}
+}
+
+var _ interface {
+	ListRuntimeTools() []runtime.Tool
+	FindRuntimeTool(name string) (runtime.Tool, bool)
+} = (*Repository)(nil)
 
 func newTestRepository(t *testing.T) *Repository {
 	t.Helper()

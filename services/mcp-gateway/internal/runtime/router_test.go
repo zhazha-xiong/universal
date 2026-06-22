@@ -154,11 +154,11 @@ type staticCatalog struct {
 	tools []Tool
 }
 
-func (catalog staticCatalog) ListTools() []Tool {
+func (catalog staticCatalog) ListRuntimeTools() []Tool {
 	return catalog.tools
 }
 
-func (catalog staticCatalog) FindTool(name string) (Tool, bool) {
+func (catalog staticCatalog) FindRuntimeTool(name string) (Tool, bool) {
 	for _, tool := range catalog.tools {
 		if tool.Name == name {
 			return tool, true

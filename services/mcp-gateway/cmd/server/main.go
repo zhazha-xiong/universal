@@ -31,10 +31,6 @@ func main() {
 	}
 
 	repo := repository.NewRepository(db)
-	if err := repo.AutoMigrate(); err != nil {
-		log.Fatalf("migrate mysql: %v", err)
-	}
-
 	router := server.NewRouter(admin.NewServiceWithStore(repo), runtime.NewService(repo, nil))
 	if err := http.ListenAndServe(cfg.Server.Addr, router); err != nil {
 		log.Fatalf("start server: %v", err)
